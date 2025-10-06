@@ -224,6 +224,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     } else {
                         warn!("usage: dial <multiaddr>");
                     }
+                } else if line.starts_with("dial_id") {
+                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        let peer_id = parts[1];
+                        let peer_id = PeerId::from_str(peer_id).unwrap();
+                        info!("dialing peer id {}", peer_id);
+                        swarm_command_tx.send(swarm_dispatch::SwarmCommand::DialPeerId(peer_id)).await.unwrap();
+                    } else {
+                        warn!("usage: dial_id <peer_id>");
+                    }
+                } else if line.starts_with("connections") {
+                    swarm_command_tx.send(swarm_dispatch::SwarmCommand::ListConnections).await.unwrap();
                 } else {
                     warn!("unknown command: {}", line);
                 }

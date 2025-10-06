@@ -13,9 +13,11 @@ use crate::behaviour::{Behaviour, BehaviourEvent};
 
 pub enum SwarmCommand {
     Dial(Multiaddr),
+    DialPeerId(libp2p::PeerId),
     BeginProviderRole(kad::RecordKey),
     StopProviderRole(kad::RecordKey),
     FindProviders(kad::RecordKey),
+    ListConnections,
 }
 
 pub struct SwarmManager {
@@ -88,6 +90,28 @@ impl SwarmManager {
                                 info!("Finding providers for key {:?}", key);
                                 let query_id = self.swarm.behaviour_mut().kademlia.get_providers(key);
                                 info!("Started get_providers query with id {:?}", query_id);
+                            }
+                            SwarmCommand::ListConnections => {
+                                let connections = self.swarm.connected_peers().collect::<Vec<_>>();
+                                if connections.is_empty() {
+                                    info!("No active connections");
+                                } else {
+                                    info!("Active connections:");
+                                    for conn in connections {
+                                        info!(" - {:?}", conn);
+                                    }
+                                }
+                            }
+                            SwarmCommand::DialPeerId(peer_id) => {
+                                info!("Dialing peer id {}", peer_id);
+                                match self.swarm.dial(peer_id) {
+                                    Ok(()) => {
+                                        info!("Dialed peer id");
+                                    }
+                                    Err(err) => {
+                                        info!("Failed to dial peer id: {:?}", err);
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -199,19 +223,20 @@ impl SwarmManager {
                 ..
             })) => {
                 if peer_id == self.relay_peer_id && self.sent_identify {
-                    tracing::info!(address=%observed_addr, "Relay told us our observed address, adding relay address to listen addresses");
+                    tracing::info!(address=%observed_addr, "Relay told us our observed address, adding relay address to listen addresses and advertising to kademlia");
+
+                    let circuit_addr = self
+                        .relay_address
+                        .clone()
+                        .with(Protocol::P2p(self.relay_peer_id))
+                        .with(Protocol::P2pCircuit);
+
+                    self.swarm.listen_on(circuit_addr.clone()).unwrap();
+
                     self.swarm
-                        .listen_on(
-                            self.relay_address
-                                .clone()
-                                .with(Protocol::P2p(self.relay_peer_id))
-                                .with(Protocol::P2pCircuit),
-                        )
-                        .unwrap();
-                    // self.swarm
-                    //     .behaviour_mut()
-                    //     .kademlia
-                    //     .add_address(&peer_id, observed_addr.clone());
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, circuit_addr);
                 }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Kademlia(
