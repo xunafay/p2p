@@ -2,10 +2,12 @@ use futures::StreamExt;
 use libp2p::{
     Multiaddr, Swarm, identify,
     kad::{self, QueryResult},
+    multiaddr::Protocol,
+    relay,
     swarm::SwarmEvent,
 };
 use tokio::{select, sync::mpsc};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::behaviour::{Behaviour, BehaviourEvent};
 
@@ -21,6 +23,9 @@ pub struct SwarmManager {
     event_tx: mpsc::Sender<SwarmEvent<BehaviourEvent>>,
     command_rx: mpsc::Receiver<SwarmCommand>,
     relay_peer_id: libp2p::PeerId,
+    relay_address: Multiaddr,
+    sent_identify: bool,
+    received_identify: bool,
 }
 
 impl SwarmManager {
@@ -29,12 +34,16 @@ impl SwarmManager {
         event_tx: mpsc::Sender<SwarmEvent<BehaviourEvent>>,
         command_rx: mpsc::Receiver<SwarmCommand>,
         relay_peer_id: libp2p::PeerId,
+        relay_address: Multiaddr,
     ) -> Self {
         SwarmManager {
             swarm,
             event_tx,
             command_rx,
             relay_peer_id,
+            sent_identify: false,
+            received_identify: false,
+            relay_address,
         }
     }
 
@@ -98,6 +107,18 @@ impl SwarmManager {
             } => {
                 info!("Listening on {} (listener_id={})", address, listener_id);
             }
+            SwarmEvent::OutgoingConnectionError {
+                peer_id,
+                error,
+                connection_id,
+                ..
+            } => {
+                if let Some(peer_id) = peer_id {
+                    tracing::info!("Failed to dial {peer_id}: {error:?}");
+                } else {
+                    tracing::info!("Failed to dial unknown peer: {error:?}");
+                }
+            }
             SwarmEvent::ConnectionClosed {
                 peer_id,
                 connection_id,
@@ -144,18 +165,28 @@ impl SwarmManager {
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Sent { .. })) => {
                 tracing::info!("Told relay its public address");
+                self.sent_identify = true;
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info: identify::Info { observed_addr, .. },
                 peer_id,
                 ..
             })) => {
+                self.received_identify = true;
                 self.swarm.add_external_address(observed_addr.clone());
                 self.swarm
                     .behaviour_mut()
                     .kademlia
                     .add_address(&peer_id, observed_addr.clone());
                 tracing::info!(address=%observed_addr, "Relay told us our observed address, added to external addresses and kademlia");
+                self.swarm
+                    .listen_on(
+                        self.relay_address
+                            .clone()
+                            .with(Protocol::P2p(self.relay_peer_id))
+                            .with(Protocol::P2pCircuit),
+                    )
+                    .unwrap();
             }
             SwarmEvent::Behaviour(BehaviourEvent::Kademlia(
                 kad::Event::OutboundQueryProgressed { result, .. },
@@ -190,6 +221,36 @@ impl SwarmManager {
                         tracing::info!("Other kademlia query result: {result:?}");
                     }
                 }
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::RelayClient(
+                relay::client::Event::ReservationReqAccepted {
+                    relay_peer_id,
+                    renewal,
+                    limit,
+                },
+            )) => {
+                let limit = limit.unwrap();
+                let ttl = limit.duration().unwrap().as_secs();
+                tracing::info!(
+                    "Relay reservation accepted from {relay_peer_id}, renewal: {renewal:?}, limit: {ttl}"
+                );
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::RelayClient(
+                relay::client::Event::OutboundCircuitEstablished {
+                    relay_peer_id,
+                    limit,
+                },
+            )) => {
+                let limit = limit.unwrap();
+                let ttl = limit.duration().unwrap().as_secs();
+                info!("Relay circuit established via {relay_peer_id}, limit: {ttl}");
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::RelayClient(
+                relay::client::Event::InboundCircuitEstablished { src_peer_id, limit },
+            )) => {
+                let limit = limit.unwrap();
+                let ttl = limit.duration().unwrap().as_secs();
+                info!("Inbound relay circuit established from {src_peer_id}, limit: {ttl}");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Dcutr(libp2p::dcutr::Event {
                 remote_peer_id,

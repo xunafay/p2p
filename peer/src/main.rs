@@ -5,8 +5,9 @@ use futures::stream::StreamExt;
 use libp2p::{
     PeerId,
     core::multiaddr::Multiaddr,
-    dcutr, identify, identity,
+    dcutr, gossipsub, identify, identity,
     kad::{self, QueryResult, store::MemoryStore},
+    multiaddr::Protocol,
     noise, ping, relay,
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
@@ -109,6 +110,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 keypair.public(),
             )),
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
+            gossipsub: gossipsub::Behaviour::new(
+                gossipsub::MessageAuthenticity::Signed(keypair.clone()),
+                gossipsub::Config::default(),
+            )
+            .unwrap(),
             kademlia,
         })?
         .with_swarm_config(|config| config.with_idle_connection_timeout(Duration::from_secs(60)))
@@ -149,8 +155,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let (swarm_command_tx, swarm_command_rx) =
         tokio::sync::mpsc::channel::<swarm_dispatch::SwarmCommand>(32);
 
-    let swarm_manager =
-        SwarmManager::new(swarm, swarm_event_tx, swarm_command_rx, opts.relay_peer_id);
+    let swarm_manager = SwarmManager::new(
+        swarm,
+        swarm_event_tx,
+        swarm_command_rx,
+        opts.relay_peer_id,
+        opts.relay_address.clone(),
+    );
 
     tokio::spawn(async move { swarm_manager.run().await });
 
@@ -161,8 +172,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if line == "exit" || line == "quit" || line == "q" {
                     info!("exiting...");
                     break;
-                } else if line.starts_with("dial ") {
-                    info!("hehe not implemented yet");
                 } else if line == "promote db" {
                     if !is_db_provider {
                         info!("promoting to db provider");
@@ -180,7 +189,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     else {
                         info!("not a db provider");
                     }
-
                 } else if line.starts_with("get providers ") {
                     let parts: Vec<&str> = line.splitn(3, ' ').collect();
                     if parts.len() == 3 {
@@ -191,12 +199,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     } else {
                         warn!("usage: get providers <key>");
                     }
+                } else if line.starts_with("dial") {
+                    let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                    if parts.len() == 2 {
+                        let peer_id = parts[1];
+                                let addr = opts.relay_address
+                                    .clone()
+                                    .with(Protocol::P2p(opts.relay_peer_id))
+                                    .with(Protocol::P2pCircuit)
+                                    .with(Protocol::P2p(PeerId::from_str(peer_id).unwrap()));
+                                info!("dialing {}", addr);
+                                swarm_command_tx.send(swarm_dispatch::SwarmCommand::Dial(addr)).await.unwrap();
+                    } else {
+                        warn!("usage: dial <multiaddr>");
+                    }
                 } else {
                     warn!("unknown command: {}", line);
                 }
             },
             _ = &mut ctrl_c_signal => {
                 info!("received Ctrl-C, shutting down.");
+
                 break;
             },
         }
