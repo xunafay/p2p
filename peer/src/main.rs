@@ -61,7 +61,12 @@ fn string_to_32_bytes(s: &str) -> [u8; 32] {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(
+            EnvFilter::builder()
+                .with_default_directive("info".parse()?)
+                .from_env()
+                .unwrap(),
+        )
         .try_init();
 
     let opts = Opts::parse();
