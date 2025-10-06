@@ -163,8 +163,17 @@ impl SwarmManager {
                     }
                 }
             }
-            SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Sent { .. })) => {
-                tracing::info!("Told relay its public address");
+            SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Sent {
+                peer_id,
+                connection_id,
+            })) => {
+                if self.relay_peer_id == peer_id {
+                    tracing::info!(
+                        "Sent identify to relay {peer_id} via {connection_id}, should learn our public address soon"
+                    );
+                } else {
+                    tracing::info!("Sent identify to {peer_id} via {connection_id}");
+                }
                 self.sent_identify = true;
             }
             SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::Event::StatusChanged {
