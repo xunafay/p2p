@@ -1,5 +1,5 @@
 use libp2p::{
-    dcutr, gossipsub, identify,
+    autonat, dcutr, gossipsub, identify,
     kad::{self, store::MemoryStore},
     ping, relay,
     swarm::NetworkBehaviour,
@@ -13,4 +13,5 @@ pub struct Behaviour {
     pub kademlia: kad::Behaviour<MemoryStore>,
     pub ping: ping::Behaviour,
     pub gossipsub: gossipsub::Behaviour,
+    pub autonat: autonat::Behaviour,
 }

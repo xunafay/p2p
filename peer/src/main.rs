@@ -3,7 +3,7 @@ use std::{error::Error, str::FromStr, time::Duration};
 use clap::Parser;
 use futures::stream::StreamExt;
 use libp2p::{
-    PeerId,
+    PeerId, autonat,
     core::multiaddr::Multiaddr,
     dcutr, gossipsub, identify, identity,
     kad::{self, QueryResult, store::MemoryStore},
@@ -109,6 +109,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "/TODO/0.0.1".to_string(),
                 keypair.public(),
             )),
+            autonat: autonat::Behaviour::new(
+                keypair.clone().public().to_peer_id(),
+                autonat::Config {
+                    retry_interval: Duration::from_secs(10),
+                    refresh_interval: Duration::from_secs(30),
+                    boot_delay: Duration::from_secs(5),
+                    throttle_server_period: Duration::ZERO,
+                    only_global_ips: false,
+                    ..Default::default()
+                },
+            ),
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
             gossipsub: gossipsub::Behaviour::new(
                 gossipsub::MessageAuthenticity::Signed(keypair.clone()),

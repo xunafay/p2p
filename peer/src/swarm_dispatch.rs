@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use libp2p::{
-    Multiaddr, Swarm, identify,
+    Multiaddr, Swarm, autonat, identify,
     kad::{self, QueryResult},
     multiaddr::Protocol,
     relay,
@@ -167,26 +167,43 @@ impl SwarmManager {
                 tracing::info!("Told relay its public address");
                 self.sent_identify = true;
             }
+            SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::Event::StatusChanged {
+                old,
+                new,
+            })) => {
+                self.received_identify = true;
+                tracing::info!("Autonat status changed from {old:?} to {new:?}");
+                if self.sent_identify && self.received_identify {
+                    tracing::info!("Both sent and received identify, we should be good now");
+                }
+                match new {
+                    autonat::NatStatus::Public(addr) => {
+                        tracing::info!("Public address: {addr}");
+                        self.swarm.add_external_address(addr);
+                    }
+                    _ => {}
+                }
+            }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info: identify::Info { observed_addr, .. },
                 peer_id,
                 ..
             })) => {
-                self.received_identify = true;
-                self.swarm.add_external_address(observed_addr.clone());
-                self.swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .add_address(&peer_id, observed_addr.clone());
-                tracing::info!(address=%observed_addr, "Relay told us our observed address, added to external addresses and kademlia");
-                self.swarm
-                    .listen_on(
-                        self.relay_address
-                            .clone()
-                            .with(Protocol::P2p(self.relay_peer_id))
-                            .with(Protocol::P2pCircuit),
-                    )
-                    .unwrap();
+                if peer_id == self.relay_peer_id && self.sent_identify {
+                    tracing::info!(address=%observed_addr, "Relay told us our observed address, adding relay address to listen addresses");
+                    self.swarm
+                        .listen_on(
+                            self.relay_address
+                                .clone()
+                                .with(Protocol::P2p(self.relay_peer_id))
+                                .with(Protocol::P2pCircuit),
+                        )
+                        .unwrap();
+                    // self.swarm
+                    //     .behaviour_mut()
+                    //     .kademlia
+                    //     .add_address(&peer_id, observed_addr.clone());
+                }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Kademlia(
                 kad::Event::OutboundQueryProgressed { result, .. },

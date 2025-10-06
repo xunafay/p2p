@@ -7,6 +7,7 @@ use std::{
 use clap::Parser;
 use futures::StreamExt;
 use libp2p::{
+    autonat,
     core::{Multiaddr, multiaddr::Protocol},
     identify, identity,
     kad::{self, store::MemoryStore},
@@ -73,6 +74,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 key.public(),
             )),
             kademlia,
+            autonat: autonat::Behaviour::new(
+                key.clone().public().to_peer_id(),
+                autonat::Config {
+                    only_global_ips: false,
+                    ..Default::default()
+                },
+            ),
         })?
         .with_swarm_config(|config| config.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
@@ -105,6 +113,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match swarm.next().await.expect("Infinite Stream.") {
             SwarmEvent::NewListenAddr { address, .. } => {
                 println!("Listening on {address:?}");
+            }
+            SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::Event::StatusChanged {
+                old,
+                new,
+            })) => {
+                tracing::info!("Autonat status changed from {old:?} to {new:?}");
+                match new {
+                    autonat::NatStatus::Public(addr) => {
+                        tracing::info!("Public address: {addr}");
+                        swarm.add_external_address(addr);
+                    }
+                    _ => {}
+                }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info:
@@ -188,6 +209,7 @@ struct Behaviour {
     identify: identify::Behaviour,
     kademlia: libp2p::kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
+    autonat: autonat::Behaviour,
 }
 
 fn generate_ed25519() -> identity::Keypair {
