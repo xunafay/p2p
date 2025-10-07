@@ -119,13 +119,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 new,
             })) => {
                 tracing::info!("Autonat status changed from {old:?} to {new:?}");
-                match new {
-                    autonat::NatStatus::Public(addr) => {
-                        tracing::info!("Public address: {addr}");
-                        swarm.add_external_address(addr);
-                    }
-                    _ => {}
-                }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info:

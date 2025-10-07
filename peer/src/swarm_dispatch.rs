@@ -106,10 +106,10 @@ impl SwarmManager {
                                 info!("Dialing peer id {}", peer_id);
                                 match self.swarm.dial(peer_id) {
                                     Ok(()) => {
-                                        info!("Dialed peer id");
+                                        info!("Dialed peer {peer_id} successfully");
                                     }
                                     Err(err) => {
-                                        info!("Failed to dial peer id: {:?}", err);
+                                        info!("Failed to dial peer id {}: {:?}", peer_id, err);
                                     }
                                 }
                             }
@@ -204,24 +204,14 @@ impl SwarmManager {
                 old,
                 new,
             })) => {
-                self.received_identify = true;
                 tracing::info!("Autonat status changed from {old:?} to {new:?}");
-                if self.sent_identify && self.received_identify {
-                    tracing::info!("Both sent and received identify, we should be good now");
-                }
-                match new {
-                    autonat::NatStatus::Public(addr) => {
-                        tracing::info!("Public address: {addr}");
-                        self.swarm.add_external_address(addr);
-                    }
-                    _ => {}
-                }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info: identify::Info { observed_addr, .. },
                 peer_id,
                 ..
             })) => {
+                self.received_identify = true;
                 if peer_id == self.relay_peer_id && self.sent_identify {
                     tracing::info!(address=%observed_addr, "Relay told us our observed address, adding relay address to listen addresses and advertising to kademlia");
 
