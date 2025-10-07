@@ -105,11 +105,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|keypair, relay_behaviour| Behaviour {
             relay_client: relay_behaviour,
-            ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(1))),
-            identify: identify::Behaviour::new(identify::Config::new(
-                "/TODO/0.0.1".to_string(),
-                keypair.public(),
-            )),
+            ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(30))),
+            identify: identify::Behaviour::new(
+                identify::Config::new("ipfs/1.0.0".to_owned(), keypair.public())
+                    .with_hide_listen_addrs(false)
+                    .with_push_listen_addr_updates(true),
+            ),
             autonat: autonat::v2::client::Behaviour::new(
                 OsRng,
                 autonat::v2::client::Config::default(),

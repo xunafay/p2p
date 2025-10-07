@@ -70,10 +70,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_behaviour(|key| Behaviour {
             relay: relay::Behaviour::new(key.public().to_peer_id(), Default::default()),
             ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(1))),
-            identify: identify::Behaviour::new(identify::Config::new(
-                "/TODO/0.0.1".to_string(),
-                key.public(),
-            )),
+            identify: identify::Behaviour::new(
+                identify::Config::new("ipfs/1.0.0".to_owned(), key.public())
+                    .with_hide_listen_addrs(false)
+                    .with_push_listen_addr_updates(true),
+            ),
             kademlia,
             autonat: autonat::v2::server::Behaviour::new(OsRng),
         })?
