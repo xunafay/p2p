@@ -200,11 +200,14 @@ impl SwarmManager {
                 }
                 self.sent_identify = true;
             }
-            SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::Event::StatusChanged {
-                old,
-                new,
+            SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::v2::client::Event {
+                result,
+                tested_addr,
+                server,
+                ..
             })) => {
-                tracing::info!("Autonat status changed from {old:?} to {new:?}");
+                let success = result.is_ok();
+                tracing::info!(%tested_addr, %server, success, "AutoNAT test completed");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info: identify::Info { observed_addr, .. },

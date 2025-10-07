@@ -15,6 +15,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
 };
+use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use tracing_subscriber::EnvFilter;
 
@@ -74,13 +75,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 key.public(),
             )),
             kademlia,
-            autonat: autonat::Behaviour::new(
-                key.clone().public().to_peer_id(),
-                autonat::Config {
-                    only_global_ips: false,
-                    ..Default::default()
-                },
-            ),
+            autonat: autonat::v2::server::Behaviour::new(OsRng),
         })?
         .with_swarm_config(|config| config.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
@@ -114,11 +109,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             SwarmEvent::NewListenAddr { address, .. } => {
                 println!("Listening on {address:?}");
             }
-            SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::Event::StatusChanged {
-                old,
-                new,
+            SwarmEvent::Behaviour(BehaviourEvent::Autonat(autonat::v2::server::Event {
+                result,
+                tested_addr,
+                client,
+                ..
             })) => {
-                tracing::info!("Autonat status changed from {old:?} to {new:?}");
+                let success = result.is_ok();
+                tracing::info!(%tested_addr, %client, success, "AutoNAT test completed");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
                 info: identify::Info { observed_addr, .. },
@@ -189,7 +187,7 @@ struct Behaviour {
     identify: identify::Behaviour,
     kademlia: libp2p::kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
-    autonat: autonat::Behaviour,
+    autonat: autonat::v2::server::Behaviour,
 }
 
 fn generate_ed25519() -> identity::Keypair {

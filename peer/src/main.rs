@@ -12,6 +12,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     tcp, yamux,
 };
+use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use tokio::{
     io::{self, AsyncBufReadExt},
@@ -109,16 +110,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 "/TODO/0.0.1".to_string(),
                 keypair.public(),
             )),
-            autonat: autonat::Behaviour::new(
-                keypair.clone().public().to_peer_id(),
-                autonat::Config {
-                    retry_interval: Duration::from_secs(10),
-                    refresh_interval: Duration::from_secs(30),
-                    boot_delay: Duration::from_secs(5),
-                    throttle_server_period: Duration::ZERO,
-                    only_global_ips: false,
-                    ..Default::default()
-                },
+            autonat: autonat::v2::client::Behaviour::new(
+                OsRng,
+                autonat::v2::client::Config::default(),
             ),
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
             gossipsub: gossipsub::Behaviour::new(

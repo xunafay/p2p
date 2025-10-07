@@ -13,5 +13,5 @@ pub struct Behaviour {
     pub kademlia: kad::Behaviour<MemoryStore>,
     pub ping: ping::Behaviour,
     pub gossipsub: gossipsub::Behaviour,
-    pub autonat: autonat::Behaviour,
+    pub autonat: autonat::v2::client::Behaviour,
 }
