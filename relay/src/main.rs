@@ -121,36 +121,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 tracing::info!("Autonat status changed from {old:?} to {new:?}");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
-                info:
-                    identify::Info {
-                        observed_addr,
-                        listen_addrs,
-                        ..
-                    },
+                info: identify::Info { observed_addr, .. },
                 peer_id,
                 ..
             })) => {
                 swarm.add_external_address(observed_addr.clone());
+                let addr = observed_addr
+                    .clone()
+                    .with(Protocol::P2p(local_key.public().to_peer_id()))
+                    .with(Protocol::P2pCircuit)
+                    .with(Protocol::P2p(peer_id));
 
-                for addr in listen_addrs {
-                    // raw listen address
-                    swarm
-                        .behaviour_mut()
-                        .kademlia
-                        .add_address(&peer_id, addr.clone());
+                swarm
+                    .behaviour_mut()
+                    .kademlia
+                    .add_address(&peer_id, addr.clone());
 
-                    // relayed address
-                    swarm.behaviour_mut().kademlia.add_address(
-                        &peer_id,
-                        listen_addr_tcp
-                            .clone()
-                            .with(Protocol::P2p(local_key.public().to_peer_id()))
-                            .with(Protocol::P2pCircuit)
-                            .with(Protocol::P2p(peer_id)),
-                    );
-
-                    tracing::info!("-> Stored address for {peer_id}: {addr:?}");
-                }
+                tracing::info!("-> Stored address for {peer_id}: {addr:?}");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Relay(
                 relay::Event::ReservationReqAccepted { src_peer_id, .. },

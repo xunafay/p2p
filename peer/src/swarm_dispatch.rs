@@ -212,8 +212,10 @@ impl SwarmManager {
                 ..
             })) => {
                 self.received_identify = true;
+                // TODO only add observed addr if autonat says it's a public addr?
+
                 if peer_id == self.relay_peer_id && self.sent_identify {
-                    tracing::info!(address=%observed_addr, "Relay told us our observed address, adding relay address to listen addresses and advertising to kademlia");
+                    tracing::info!(address=%observed_addr, "Idfk anymore what i'm doing here ngl");
 
                     let circuit_addr = self
                         .relay_address
@@ -222,11 +224,6 @@ impl SwarmManager {
                         .with(Protocol::P2pCircuit);
 
                     self.swarm.listen_on(circuit_addr.clone()).unwrap();
-
-                    self.swarm
-                        .behaviour_mut()
-                        .kademlia
-                        .add_address(&peer_id, circuit_addr);
                 }
             }
             SwarmEvent::Behaviour(BehaviourEvent::Kademlia(
