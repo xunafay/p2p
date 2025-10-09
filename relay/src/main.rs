@@ -1,6 +1,7 @@
 use std::{
     error::Error,
     net::{Ipv4Addr, Ipv6Addr},
+    num::NonZeroU32,
     time::Duration,
 };
 
@@ -59,6 +60,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Ok(config)
         };
 
+    let mut relay_config = relay::Config::default()
+        .reservation_rate_per_peer(NonZeroU32::new(60).unwrap(), Duration::from_secs(60 * 60))
+        .reservation_rate_per_ip(NonZeroU32::new(1000).unwrap(), Duration::from_secs(60 * 60))
+        .circuit_src_per_ip(NonZeroU32::new(1000).unwrap(), Duration::from_secs(60 * 60))
+        .circuit_src_per_peer(NonZeroU32::new(500).unwrap(), Duration::from_secs(60 * 60));
+
+    relay_config.max_circuit_bytes = 5 * 1024 * 1024 * 1024; // 5 gibibyte
+
     let mut swarm = libp2p::SwarmBuilder::with_existing_identity(local_key.clone())
         .with_tokio()
         .with_tcp(
@@ -68,8 +77,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )?
         .with_quic()
         .with_behaviour(|key| Behaviour {
-            relay: relay::Behaviour::new(key.public().to_peer_id(), Default::default()),
-            ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(1))),
+            relay: relay::Behaviour::new(key.public().to_peer_id(), relay_config),
+            ping: ping::Behaviour::new(ping::Config::new().with_interval(Duration::from_secs(20))),
             identify: identify::Behaviour::new(
                 identify::Config::new("ipfs/1.0.0".to_owned(), key.public())
                     .with_hide_listen_addrs(false)
