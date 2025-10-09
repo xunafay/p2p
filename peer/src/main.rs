@@ -5,7 +5,8 @@ use futures::stream::StreamExt;
 use libp2p::{
     PeerId, autonat,
     core::multiaddr::Multiaddr,
-    dcutr, gossipsub, identify, identity,
+    dcutr, gossipsub, identify,
+    identity::{self, ed25519},
     kad::{self, QueryResult, store::MemoryStore},
     multiaddr::Protocol,
     noise, ping, relay,
@@ -23,11 +24,13 @@ use tracing_subscriber::EnvFilter;
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
+    local_config::AppConfig,
     swarm_dispatch::SwarmManager,
 };
 
 pub mod behaviour;
 pub mod database_manager;
+pub mod local_config;
 pub mod swarm_dispatch;
 
 #[derive(Debug, Parser)]
@@ -60,6 +63,16 @@ fn string_to_32_bytes(s: &str) -> [u8; 32] {
     arr
 }
 
+fn get_config_or_default() -> Result<local_config::AppConfig, Box<dyn Error>> {
+    if let Ok(config) = local_config::AppConfig::load() {
+        config.validate()?;
+        return Ok(config);
+    };
+
+    AppConfig::default().save()?;
+    Err(format!("No valid config found. A default config has been created at {}. Please edit it and restart the application.", AppConfig::default_config_location()).into())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let _ = tracing_subscriber::fmt()
@@ -71,25 +84,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .try_init();
 
-    let opts = Opts::parse();
+    let peer_config = get_config_or_default().unwrap_or_else(|e| {
+        println!("{}", e);
+        std::process::exit(1);
+    });
 
-    let keypair = if let Some(seed) = opts.secret_key_seed {
-        generate_ed25519_from_seed(seed)
-    } else {
-        generate_ed25519()
-    };
-
+    let keypair = peer_config.load_keypair().expect("Failed to load keypair");
     let mut kademlia = libp2p::kad::Behaviour::new(
         keypair.public().to_peer_id(),
         MemoryStore::new(keypair.public().to_peer_id()),
     );
     kademlia.set_mode(Some(kad::Mode::Client));
-    kademlia.add_address(&opts.relay_peer_id, opts.relay_address.clone());
+    kademlia.add_address(
+        &peer_config.relay.peer_id,
+        peer_config.relay.address.clone(),
+    );
 
     let noise_config_with_prologue =
         |keypair: &identity::Keypair| -> Result<noise::Config, std::io::Error> {
             let mut config = noise::Config::new(keypair).expect("Noise key generation failed");
-            config = config.with_prologue(string_to_32_bytes(&opts.key).to_vec());
+            config = config
+                .with_prologue(string_to_32_bytes(&peer_config.identity.pre_shared_key).to_vec());
             Ok(config)
         };
 
@@ -137,9 +152,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // our local public address and (b) enable a freshly started relay to learn its public address.
     swarm
         .dial(
-            opts.relay_address
+            peer_config
+                .relay
+                .address
                 .clone()
-                .with_p2p(opts.relay_peer_id)
+                .with_p2p(peer_config.relay.peer_id)
                 .unwrap(),
         )
         .unwrap();
@@ -165,8 +182,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         swarm,
         swarm_event_tx,
         swarm_command_rx,
-        opts.relay_peer_id,
-        opts.relay_address.clone(),
+        peer_config.relay.peer_id,
+        peer_config.relay.address.clone(),
     );
 
     tokio::spawn(async move { swarm_manager.run().await });
@@ -209,9 +226,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let parts: Vec<&str> = line.splitn(2, ' ').collect();
                     if parts.len() == 2 {
                         let peer_id = parts[1];
-                                let addr = opts.relay_address
+                                let addr = peer_config.relay.address
                                     .clone()
-                                    .with(Protocol::P2p(opts.relay_peer_id))
+                                    .with(Protocol::P2p(peer_config.relay.peer_id))
                                     .with(Protocol::P2pCircuit)
                                     .with(Protocol::P2p(PeerId::from_str(peer_id).unwrap()));
                                 info!("dialing {}", addr);
