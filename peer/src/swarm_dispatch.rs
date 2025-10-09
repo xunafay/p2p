@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use futures::StreamExt;
 use libp2p::{
     Multiaddr, Swarm, autonat, identify,
@@ -6,8 +8,11 @@ use libp2p::{
     relay,
     swarm::SwarmEvent,
 };
-use tokio::{select, sync::mpsc};
-use tracing::{info, warn};
+use tokio::{
+    select,
+    sync::{broadcast, mpsc},
+};
+use tracing::info;
 
 use crate::behaviour::{Behaviour, BehaviourEvent};
 
@@ -22,7 +27,7 @@ pub enum SwarmCommand {
 
 pub struct SwarmManager {
     swarm: Swarm<Behaviour>,
-    event_tx: mpsc::Sender<SwarmEvent<BehaviourEvent>>,
+    event_tx: broadcast::Sender<Arc<SwarmEvent<BehaviourEvent>>>,
     command_rx: mpsc::Receiver<SwarmCommand>,
     relay_peer_id: libp2p::PeerId,
     relay_address: Multiaddr,
@@ -33,7 +38,7 @@ pub struct SwarmManager {
 impl SwarmManager {
     pub fn new(
         swarm: Swarm<Behaviour>,
-        event_tx: mpsc::Sender<SwarmEvent<BehaviourEvent>>,
+        event_tx: broadcast::Sender<Arc<SwarmEvent<BehaviourEvent>>>,
         command_rx: mpsc::Receiver<SwarmCommand>,
         relay_peer_id: libp2p::PeerId,
         relay_address: Multiaddr,
@@ -54,7 +59,8 @@ impl SwarmManager {
         loop {
             select! {
                 event = self.swarm.select_next_some() => {
-                    self.handle_swarm_event(event);
+                    self.handle_swarm_event(&event);
+                    let _ = self.event_tx.send(Arc::new(event));
                 }
                 command = self.command_rx.recv() => {
                     if let Some(command) = command {
@@ -123,7 +129,8 @@ impl SwarmManager {
             }
         }
     }
-    fn handle_swarm_event(&mut self, event: SwarmEvent<BehaviourEvent>) {
+
+    fn handle_swarm_event(&mut self, event: &SwarmEvent<BehaviourEvent>) {
         match event {
             SwarmEvent::NewListenAddr {
                 address,
@@ -131,12 +138,7 @@ impl SwarmManager {
             } => {
                 info!("Listening on {} (listener_id={})", address, listener_id);
             }
-            SwarmEvent::OutgoingConnectionError {
-                peer_id,
-                error,
-                connection_id,
-                ..
-            } => {
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = peer_id {
                     tracing::info!("Failed to dial {peer_id}: {error:?}");
                 } else {
@@ -145,10 +147,9 @@ impl SwarmManager {
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
-                connection_id,
                 endpoint,
-                num_established,
                 cause,
+                ..
             } => {
                 if endpoint.is_relayed() {
                     tracing::info!("Relay circuit closed from {peer_id} because {cause:?}");
@@ -175,7 +176,7 @@ impl SwarmManager {
 
                 // bootstrap kademlia once connected to the relay
                 // happens automatically?
-                if self.relay_peer_id == peer_id {
+                if &self.relay_peer_id == peer_id {
                     info!("Connected to relay, starting kademlia bootstrap");
                     match self.swarm.behaviour_mut().kademlia.bootstrap() {
                         Ok(result) => {
@@ -191,7 +192,7 @@ impl SwarmManager {
                 peer_id,
                 connection_id,
             })) => {
-                if self.relay_peer_id == peer_id {
+                if &self.relay_peer_id == peer_id {
                     tracing::info!(
                         "Sent identify to relay {peer_id} via {connection_id}, should learn our public address soon"
                     );
@@ -217,7 +218,7 @@ impl SwarmManager {
                 self.received_identify = true;
                 // TODO only add observed addr if autonat says it's a public addr?
 
-                if peer_id == self.relay_peer_id && self.sent_identify {
+                if peer_id == &self.relay_peer_id && self.sent_identify {
                     tracing::info!(address=%observed_addr, "Idfk anymore what i'm doing here ngl");
 
                     let circuit_addr = self
@@ -235,7 +236,7 @@ impl SwarmManager {
                 match result {
                     QueryResult::GetClosestPeers(result) => match result {
                         Ok(result) => {
-                            for peer in result.peers {
+                            for peer in &result.peers {
                                 let peer_id = peer.peer_id;
                                 info!("Found peer {peer_id} via kademlia");
 
@@ -304,9 +305,7 @@ impl SwarmManager {
                     info!("DCUtR with {remote_peer_id} failed: {err:?}");
                 }
             },
-            event => {
-                // println!("unmanaged event: {event:?}");
-            }
+            _ => {}
         }
     }
 }

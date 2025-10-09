@@ -1,4 +1,4 @@
-use std::{error::Error, str::FromStr, time::Duration};
+use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 
 use clap::Parser;
 use futures::stream::StreamExt;
@@ -24,6 +24,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::{
     behaviour::{Behaviour, BehaviourEvent},
+    database_manager::DatabaseManager,
     local_config::AppConfig,
     swarm_dispatch::SwarmManager,
 };
@@ -174,9 +175,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //     .expect("failed to start providing as kademlia relay");
 
     let (swarm_event_tx, swarm_event_rx) =
-        tokio::sync::mpsc::channel::<SwarmEvent<BehaviourEvent>>(32);
+        tokio::sync::broadcast::channel::<Arc<SwarmEvent<BehaviourEvent>>>(32);
     let (swarm_command_tx, swarm_command_rx) =
         tokio::sync::mpsc::channel::<swarm_dispatch::SwarmCommand>(32);
+    let (db_event_tx, db_event_rx) =
+        tokio::sync::mpsc::channel::<database_manager::DatabaseEvent>(32);
+    let (db_command_tx, db_command_rx) =
+        tokio::sync::mpsc::channel::<database_manager::DatabaseCommand>(32);
 
     let swarm_manager = SwarmManager::new(
         swarm,
@@ -184,6 +189,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         swarm_command_rx,
         peer_config.relay.peer_id,
         peer_config.relay.address.clone(),
+    );
+
+    let database_manager = DatabaseManager::new(
+        db_event_tx,
+        db_command_rx,
+        swarm_event_rx,
+        swarm_command_tx.clone(),
     );
 
     tokio::spawn(async move { swarm_manager.run().await });
