@@ -157,18 +157,6 @@ impl SwarmManager {
                     tracing::info!("Connection closed from {peer_id} because {cause:?}");
                 }
             }
-            // SwarmEvent::Behaviour(BehaviourEvent::Ping(ping::Event {
-            //     result,
-            //     peer,
-            //     connection,
-            // })) => match result {
-            //     Ok(rtt) => {
-            //         info!("Ping to {peer} via {connection} is {rtt:?}");
-            //     }
-            //     Err(err) => {
-            //         info!("Ping to {peer} via {connection} failed: {err:?}");
-            //     }
-            // },
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {

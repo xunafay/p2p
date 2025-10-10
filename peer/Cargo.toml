@@ -11,7 +11,7 @@ dirs = "6.0.0"
 ed25519-dalek = { version = "2.2.0", features = ["pem", "rand_core"] }
 futures = "0.3.31"
 futures-timer = "3.0.3"
-libp2p = { version = "0.56.0", features = ["full"] }
+libp2p = { workspace = true }
 rand = "0.8.5"
 serde = { version = "1.0.228", features = ["serde_derive"] }
 sha2 = "0.10.9"

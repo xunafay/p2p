@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [
-    "relay",
-    "peer"
-]
+members = ["relay", "peer", "protocols/automerge", "protocols/update"]
+
+[workspace.dependencies]
+libp2p = { version = "0.56.0", features = ["full"] }

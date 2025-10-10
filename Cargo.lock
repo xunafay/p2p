@@ -266,6 +266,14 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "automerge"
+version = "0.1.0"
+dependencies = [
+ "either",
+ "libp2p",
+]
+
+[[package]]
+name = "automerge"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49330107ffb66056ccb16b57549bfd145d696c85f3f0ad7fa1b2329c1c421a1a"
@@ -2907,7 +2915,7 @@ name = "peer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "automerge",
+ "automerge 0.7.0",
  "clap",
  "dirs",
  "ed25519-dalek",
@@ -4232,6 +4240,10 @@ name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
+
+[[package]]
+name = "update"
+version = "0.1.0"
 
 [[package]]
 name = "url"
