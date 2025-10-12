@@ -14,4 +14,5 @@ pub struct Behaviour {
     pub ping: ping::Behaviour,
     pub gossipsub: gossipsub::Behaviour,
     pub autonat: autonat::v2::client::Behaviour,
+    pub automerge: libp2p_automerge::Behaviour,
 }

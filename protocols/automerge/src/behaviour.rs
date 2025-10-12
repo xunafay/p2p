@@ -1,21 +1,52 @@
-use std::{collections::VecDeque, convert::Infallible};
+use std::{
+    collections::{HashMap, VecDeque},
+    convert::Infallible,
+};
 
-use either::Either;
-use libp2p::swarm::{NetworkBehaviour, ToSwarm, dummy};
+use either::Either::{self, Left};
+use libp2p::{
+    PeerId,
+    swarm::{NetworkBehaviour, ToSwarm, dummy},
+};
 
 use crate::handler::{Command, Handler};
 
 #[derive(Debug)]
-pub enum Event {}
+pub enum Event {
+    DocumentSynced {
+        peer: PeerId,
+        document_id: String,
+    },
+    DocumentChanged {
+        peer: PeerId,
+        document_id: String,
+    },
+    SyncRequested {
+        peer: PeerId,
+        document_id: String,
+    },
+    SyncError {
+        peer: PeerId,
+        document_id: String,
+        error: String,
+    },
+}
 
 pub struct Behaviour {
+    /// Events to be sent to the swarm
     queued_events: VecDeque<ToSwarm<Event, Either<Command, Infallible>>>,
+    /// (PeerId, DocumentId)
+    active_syncs: Vec<(PeerId, String)>,
+    /// Pending commands to send to connection handlers
+    pending_commands: HashMap<(PeerId, String), VecDeque<Command>>,
 }
 
 impl Behaviour {
     pub fn new() -> Self {
         Behaviour {
             queued_events: VecDeque::new(),
+            active_syncs: Vec::new(),
+            pending_commands: HashMap::new(),
         }
     }
 }
@@ -32,7 +63,8 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &libp2p::Multiaddr,
         remote_addr: &libp2p::Multiaddr,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        todo!()
+        tracing::warn!("Established inbound connection: {:?}", peer);
+        Ok(Either::Left(crate::handler::Handler::new()))
     }
 
     fn handle_established_outbound_connection(
@@ -43,20 +75,27 @@ impl NetworkBehaviour for Behaviour {
         role_override: libp2p::core::Endpoint,
         port_use: libp2p::core::transport::PortUse,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        todo!()
+        tracing::warn!("Established outbound connection: {:?}", peer);
+        Ok(Either::Left(crate::handler::Handler::new()))
     }
 
-    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm) {
-        todo!()
-    }
+    fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm) {}
 
     fn on_connection_handler_event(
         &mut self,
         _peer_id: libp2p::PeerId,
         _connection_id: libp2p::swarm::ConnectionId,
-        _event: libp2p::swarm::THandlerOutEvent<Self>,
+        event: libp2p::swarm::THandlerOutEvent<Self>,
     ) {
-        todo!()
+        tracing::warn!("Connection handler event: {:?}", event);
+        match event {
+            Left(handler_event) => match handler_event {
+                _ => {
+                    tracing::warn!("Unhandled handler event: {:?}", handler_event);
+                }
+            },
+            _ => {} // dummy handler, do nothing
+        }
     }
 
     fn poll(

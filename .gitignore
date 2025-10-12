@@ -1,1 +1,4 @@
 /target
+
+# Peer configs location used for local testing
+/configs

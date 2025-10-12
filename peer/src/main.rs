@@ -128,6 +128,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             )
             .unwrap(),
             kademlia,
+            automerge: libp2p_automerge::Behaviour::new(),
         })?
         .with_swarm_config(|config| config.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();

@@ -266,14 +266,6 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "automerge"
-version = "0.1.0"
-dependencies = [
- "either",
- "libp2p",
-]
-
-[[package]]
-name = "automerge"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49330107ffb66056ccb16b57549bfd145d696c85f3f0ad7fa1b2329c1c421a1a"
@@ -1824,6 +1816,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libp2p-automerge"
+version = "0.1.0"
+dependencies = [
+ "either",
+ "libp2p",
+ "tracing",
+]
+
+[[package]]
 name = "libp2p-autonat"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2915,13 +2916,14 @@ name = "peer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "automerge 0.7.0",
+ "automerge",
  "clap",
  "dirs",
  "ed25519-dalek",
  "futures",
  "futures-timer",
  "libp2p",
+ "libp2p-automerge",
  "rand 0.8.5",
  "serde",
  "sha2 0.10.9",
