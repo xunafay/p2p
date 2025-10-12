@@ -73,7 +73,11 @@ impl AppConfig {
             .to_string()
     }
 
-    pub fn load() -> Result<Self> {
+    pub fn load(path: Option<String>) -> Result<Self> {
+        if let Some(p) = path {
+            return Self::load_from_file(&p);
+        }
+
         let path = Self::default_config_location();
         Self::load_from_file(&path)
     }

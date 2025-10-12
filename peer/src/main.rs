@@ -37,23 +37,9 @@ pub mod swarm_dispatch;
 #[derive(Debug, Parser)]
 #[command(name = "libp2p DCUtR client")]
 struct Opts {
-    /// Fixed value to generate deterministic peer id.
+    /// Config file path
     #[arg(long)]
-    secret_key_seed: Option<u8>,
-
-    /// The listening address
-    #[arg(long)]
-    relay_address: Multiaddr,
-
-    /// Peer ID of the remote peer to hole punch to.
-    #[arg(long)]
-    relay_peer_id: PeerId,
-
-    /// Pre-shared key for Noise protocol
-    ///
-    /// Example: "mysecretkey"
-    #[arg(long)]
-    key: String,
+    config: Option<String>,
 }
 
 /// Hashes a string to a [u8; 32] key using SHA-256.
@@ -64,8 +50,10 @@ fn string_to_32_bytes(s: &str) -> [u8; 32] {
     arr
 }
 
-fn get_config_or_default() -> Result<local_config::AppConfig, Box<dyn Error>> {
-    if let Ok(config) = local_config::AppConfig::load() {
+fn get_config_or_default(
+    config_path: Option<String>,
+) -> Result<local_config::AppConfig, Box<dyn Error>> {
+    if let Ok(config) = local_config::AppConfig::load(config_path) {
         config.validate()?;
         return Ok(config);
     };
@@ -85,7 +73,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .try_init();
 
-    let peer_config = get_config_or_default().unwrap_or_else(|e| {
+    let opts: Opts = Opts::parse();
+
+    let peer_config = get_config_or_default(opts.config).unwrap_or_else(|e| {
         println!("{}", e);
         std::process::exit(1);
     });
