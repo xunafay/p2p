@@ -50,6 +50,7 @@ impl Default for IdentityConfig {
 pub struct AppConfig {
     pub relay: RelayConfig,
     pub identity: IdentityConfig,
+    pub db_path: PathBuf,
 }
 
 impl Default for AppConfig {
@@ -57,6 +58,7 @@ impl Default for AppConfig {
         Self {
             identity: IdentityConfig::default(),
             relay: RelayConfig::default(),
+            db_path: dirs::data_dir().unwrap().join(CONFIG_DIR_NAME).join("data"),
         }
     }
 }

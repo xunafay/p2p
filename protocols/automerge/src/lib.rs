@@ -2,4 +2,4 @@ mod behaviour;
 mod handler;
 mod protocol;
 
-pub use behaviour::Behaviour;
+pub use behaviour::{Behaviour, Config};

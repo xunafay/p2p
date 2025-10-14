@@ -1,11 +1,12 @@
 use std::task::Poll;
 
 use libp2p::{
-    PeerId, StreamProtocol,
+    PeerId, Stream, StreamProtocol,
     autonat::v2::client::Event,
     core::upgrade::{DeniedUpgrade, ReadyUpgrade},
     swarm::{ConnectionHandler, ConnectionHandlerEvent, SubstreamProtocol},
 };
+use tracing::warn;
 
 use crate::protocol::PROTOCOL_NAME;
 
@@ -30,31 +31,30 @@ pub enum Command {
     },
 }
 
+/// Event from behaviour to the connection handler
+#[derive(Debug)]
+pub enum InEvent {
+    DocumentChanged { document_id: String },
+}
+
 pub struct Handler {
-    pending_commands: Vec<Command>,
     pending_events: Vec<Event>,
 }
 
 impl Handler {
     pub fn new() -> Self {
         Handler {
-            pending_commands: Vec::new(),
             pending_events: Vec::new(),
         }
     }
 }
 
 impl ConnectionHandler for Handler {
-    type FromBehaviour = Command;
-
+    type FromBehaviour = InEvent;
     type ToBehaviour = Event;
-
     type InboundProtocol = ReadyUpgrade<StreamProtocol>;
-
-    type OutboundProtocol = DeniedUpgrade;
-
+    type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
     type InboundOpenInfo = ();
-
     type OutboundOpenInfo = ();
 
     fn listen_protocol(
@@ -77,16 +77,11 @@ impl ConnectionHandler for Handler {
             return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(event));
         }
 
-        if let Some(command) = self.pending_commands.pop() {
-            // I don't know how to handle commands yet
-            tracing::warn!("Unhandled command: {:?}", command);
-        }
-
         Poll::Pending
     }
 
     fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
-        self.pending_commands.push(event);
+        warn!("Received behaviour event: {:?}", event);
     }
 
     fn on_connection_event(
@@ -98,6 +93,11 @@ impl ConnectionHandler for Handler {
             Self::OutboundOpenInfo,
         >,
     ) {
-        tracing::debug!("Connection event: {:?}", event);
+        tracing::debug!("Connection handler event: {:?}", event);
     }
+}
+
+enum OutboundState {
+    PedingStream,
+    Ready(Stream),
 }

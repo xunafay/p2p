@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use automerge::{ReadDoc, transaction::Transactable};
 use futures::StreamExt;
 use libp2p::{
     Multiaddr, Swarm, autonat, identify,
@@ -12,7 +13,7 @@ use tokio::{
     select,
     sync::{broadcast, mpsc},
 };
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use crate::behaviour::{Behaviour, BehaviourEvent};
 
@@ -23,6 +24,8 @@ pub enum SwarmCommand {
     StopProviderRole(kad::RecordKey),
     FindProviders(kad::RecordKey),
     ListConnections,
+    PutTestValue(String, String),
+    GetTestValue(String),
 }
 
 pub struct SwarmManager {
@@ -66,13 +69,13 @@ impl SwarmManager {
                     if let Some(command) = command {
                         match command {
                             SwarmCommand::Dial(addr) => {
-                                info!("Dialing {}", addr);
+                                debug!("Dialing {}", addr);
                                 match self.swarm.dial(addr.clone()) {
                                     Ok(()) => {
-                                        info!("Dialed {}", addr);
+                                        debug!("Dialed {}", addr);
                                     }
                                     Err(err) => {
-                                        info!("Failed to dial {}: {:?}", addr, err);
+                                        debug!("Failed to dial {}: {:?}", addr, err);
                                     }
                                 }
                             }
@@ -83,19 +86,19 @@ impl SwarmManager {
                                         info!("Started providing for key");
                                     }
                                     Err(err) => {
-                                        info!("Failed to start providing for key: {:?}", err);
+                                        warn!("Failed to start providing for key: {:?}", err);
                                     }
                                 }
                             }
                             SwarmCommand::StopProviderRole(key) => {
-                                info!("Stopping to provide for key {:?}", key);
+                                debug!("Stopping to provide for key {:?}", key);
                                 self.swarm.behaviour_mut().kademlia.stop_providing(&key);
-                                info!("Stopped providing for key");
+                                debug!("Stopped providing for key");
                             }
                             SwarmCommand::FindProviders(key) => {
-                                info!("Finding providers for key {:?}", key);
+                                debug!("Finding providers for key {:?}", key);
                                 let query_id = self.swarm.behaviour_mut().kademlia.get_providers(key);
-                                info!("Started get_providers query with id {:?}", query_id);
+                                debug!("Started get_providers query with id {:?}", query_id);
                             }
                             SwarmCommand::ListConnections => {
                                 let connections = self.swarm.connected_peers().collect::<Vec<_>>();
@@ -109,16 +112,33 @@ impl SwarmManager {
                                 }
                             }
                             SwarmCommand::DialPeerId(peer_id) => {
-                                info!("Dialing peer id {}", peer_id);
+                                debug!("Dialing peer id {}", peer_id);
                                 match self.swarm.dial(peer_id) {
                                     Ok(()) => {
-                                        info!("Dialed peer {peer_id} successfully");
+                                        debug!("Dialed peer {peer_id} successfully");
                                     }
                                     Err(err) => {
-                                        info!("Failed to dial peer id {}: {:?}", peer_id, err);
+                                        debug!("Failed to dial peer id {}: {:?}", peer_id, err);
                                     }
                                 }
-                            }
+                            },
+                            SwarmCommand::PutTestValue(key, value) => {
+                                tracing::info!("Putting test value {} at {}", value, key);
+                                self.swarm.behaviour_mut().automerge.modify_document("test", |doc| {
+                                    doc.put(automerge::ROOT, key, value).unwrap();
+                                });
+                            },
+                            SwarmCommand::GetTestValue(key) => {
+                                if let Some(doc) = self.swarm.behaviour_mut().automerge.get_document("test") {
+                                    if let Ok(Some(value)) = doc.get(automerge::ROOT, &key) {
+                                        tracing::info!("Got value for key {}: {:?}", key, value.0);
+                                    } else {
+                                        tracing::info!("Key {} not found in document", key);
+                                    }
+                                } else {
+                                    tracing::info!("Document 'test' not found");
+                                }
+                            },
                         }
                     } else {
                         // command channel closed
@@ -140,9 +160,9 @@ impl SwarmManager {
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = peer_id {
-                    tracing::info!("Failed to dial {peer_id}: {error:?}");
+                    tracing::debug!("Failed to dial {peer_id}: {error:?}");
                 } else {
-                    tracing::info!("Failed to dial unknown peer: {error:?}");
+                    tracing::debug!("Failed to dial unknown peer: {error:?}");
                 }
             }
             SwarmEvent::ConnectionClosed {
@@ -152,26 +172,26 @@ impl SwarmManager {
                 ..
             } => {
                 if endpoint.is_relayed() {
-                    tracing::info!("Relay circuit closed from {peer_id} because {cause:?}");
+                    tracing::debug!("Relay circuit closed from {peer_id} because {cause:?}");
                 } else {
-                    tracing::info!("Connection closed from {peer_id} because {cause:?}");
+                    tracing::debug!("Connection closed from {peer_id} because {cause:?}");
                 }
             }
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
-                info!("Connected to {peer_id}, endpoint: {endpoint:?}");
+                debug!("Connected to {peer_id}, endpoint: {endpoint:?}");
 
                 // bootstrap kademlia once connected to the relay
                 // happens automatically?
                 if &self.relay_peer_id == peer_id {
-                    info!("Connected to relay, starting kademlia bootstrap");
+                    debug!("Connected to relay, starting kademlia bootstrap");
                     match self.swarm.behaviour_mut().kademlia.bootstrap() {
                         Ok(result) => {
-                            info!("Started kademlia bootstrap: {result:?}");
+                            debug!("Started kademlia bootstrap: {result:?}");
                         }
                         Err(err) => {
-                            info!("Failed to start kademlia bootstrap: {err:?}");
+                            warn!("Failed to start kademlia bootstrap: {err:?}");
                         }
                     }
                 }
@@ -181,11 +201,11 @@ impl SwarmManager {
                 connection_id,
             })) => {
                 if &self.relay_peer_id == peer_id {
-                    tracing::info!(
+                    tracing::debug!(
                         "Sent identify to relay {peer_id} via {connection_id}, should learn our public address soon"
                     );
                 } else {
-                    tracing::info!("Sent identify to {peer_id} via {connection_id}");
+                    tracing::debug!("Sent identify to {peer_id} via {connection_id}");
                 }
                 self.sent_identify = true;
             }
@@ -196,10 +216,10 @@ impl SwarmManager {
                 ..
             })) => {
                 let success = result.is_ok();
-                tracing::info!(%tested_addr, %server, success, "AutoNAT test completed");
+                tracing::debug!(%tested_addr, %server, success, "AutoNAT test completed");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
-                info: identify::Info { observed_addr, .. },
+                info: identify::Info { .. },
                 peer_id,
                 ..
             })) => {
@@ -207,8 +227,6 @@ impl SwarmManager {
                 // TODO only add observed addr if autonat says it's a public addr?
 
                 if peer_id == &self.relay_peer_id && self.sent_identify {
-                    tracing::info!(address=%observed_addr, "Idfk anymore what i'm doing here ngl");
-
                     let circuit_addr = self
                         .relay_address
                         .clone()
@@ -226,29 +244,29 @@ impl SwarmManager {
                         Ok(result) => {
                             for peer in &result.peers {
                                 let peer_id = peer.peer_id;
-                                info!("Found peer {peer_id} via kademlia");
+                                debug!("Found peer {peer_id} via kademlia");
 
                                 // TODO dial peer to punch hole
                             }
                         }
                         Err(err) => {
-                            info!("Failed to get closest peers: {err:?}");
+                            warn!("Failed to get closest peers: {err:?}");
                         }
                     },
                     QueryResult::Bootstrap(result) => match result {
                         Ok(result) => {
                             let peer = result.peer;
                             let num_remaining = result.num_remaining;
-                            tracing::info!(
+                            tracing::debug!(
                                 "Kademlia bootstrap with {peer} completed, {num_remaining} queries remaining"
                             );
                         }
                         Err(err) => {
-                            tracing::info!("Kademlia bootstrap failed: {err:?}");
+                            tracing::debug!("Kademlia bootstrap failed: {err:?}");
                         }
                     },
                     _ => {
-                        tracing::info!("Other kademlia query result: {result:?}");
+                        tracing::debug!("Other kademlia query result: {result:?}");
                     }
                 }
             }
@@ -261,7 +279,7 @@ impl SwarmManager {
             )) => {
                 let limit = limit.unwrap();
                 let ttl = limit.duration().unwrap().as_secs();
-                tracing::info!(
+                tracing::debug!(
                     "Relay reservation accepted from {relay_peer_id}, renewal: {renewal:?}, limit: {ttl}"
                 );
             }
@@ -273,14 +291,14 @@ impl SwarmManager {
             )) => {
                 let limit = limit.unwrap();
                 let ttl = limit.duration().unwrap().as_secs();
-                info!("Relay circuit established via {relay_peer_id}, limit: {ttl}");
+                debug!("Relay circuit established via {relay_peer_id}, limit: {ttl}");
             }
             SwarmEvent::Behaviour(BehaviourEvent::RelayClient(
                 relay::client::Event::InboundCircuitEstablished { src_peer_id, limit },
             )) => {
                 let limit = limit.unwrap();
                 let ttl = limit.duration().unwrap().as_secs();
-                info!("Inbound relay circuit established from {src_peer_id}, limit: {ttl}");
+                debug!("Inbound relay circuit established from {src_peer_id}, limit: {ttl}");
             }
             SwarmEvent::Behaviour(BehaviourEvent::Dcutr(libp2p::dcutr::Event {
                 remote_peer_id,
@@ -290,7 +308,7 @@ impl SwarmManager {
                     info!("DCUtR with {remote_peer_id} succeeded");
                 }
                 Err(err) => {
-                    info!("DCUtR with {remote_peer_id} failed: {err:?}");
+                    warn!("DCUtR with {remote_peer_id} failed: {err:?}");
                 }
             },
             _ => {}

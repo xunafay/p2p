@@ -1,5 +1,6 @@
 use std::{error::Error, str::FromStr, sync::Arc, time::Duration};
 
+use automerge::transaction::Transactable;
 use clap::Parser;
 use futures::stream::StreamExt;
 use libp2p::{
@@ -128,7 +129,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             )
             .unwrap(),
             kademlia,
-            automerge: libp2p_automerge::Behaviour::new(),
+            automerge: libp2p_automerge::Behaviour::new(libp2p_automerge::Config {
+                documents_whitelist: Some(vec!["test".to_string(), "codereview".to_string()]),
+                max_simultaneous_syncs: 2,
+                data_dir: peer_config.db_path,
+            }),
         })?
         .with_swarm_config(|config| config.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
@@ -198,6 +203,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 if line == "exit" || line == "quit" || line == "q" {
                     info!("exiting...");
                     break;
+                } else if line.starts_with("db put ") { // db put <key> <value>
+                    let parts: Vec<&str> = line.splitn(4, ' ').collect();
+                    if parts.len() == 4 {
+                        let value = parts[3];
+                        let key = parts[2];
+                        swarm_command_tx.send(swarm_dispatch::SwarmCommand::PutTestValue(key.to_string(), value.to_string())).await.unwrap();
+                    } else {
+                        warn!("usage: db put <key> <value>");
+                    }
+                } else if line.starts_with("db get") { // db get <key>
+                    let parts: Vec<&str> = line.splitn(3, ' ').collect();
+                    if parts.len() == 3 {
+                        let key = parts[2];
+                        swarm_command_tx.send(swarm_dispatch::SwarmCommand::GetTestValue(key.to_string())).await.unwrap();
+                    } else {
+                        warn!("usage: db get <key>");
+                    }
                 } else if line == "promote db" {
                     if !is_db_provider {
                         info!("promoting to db provider");
