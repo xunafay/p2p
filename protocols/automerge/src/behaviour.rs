@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use automerge::AutoCommit;
+use automerge::{
+    AutoCommit,
+    sync::{self, Message, SyncDoc},
+};
 use either::Either::{self, Left};
 use libp2p::{
     PeerId,
@@ -81,6 +84,12 @@ impl Behaviour {
     {
         if let Some(doc) = self.documents.get_mut(document_id) {
             f(doc);
+            let mut state = sync::State::new();
+            let x = doc.sync().generate_sync_message(&mut state).unwrap();
+            let bytes = x.encode();
+            doc.sync()
+                .receive_sync_message(&mut state, Message::decode(&bytes).unwrap())
+                .unwrap();
 
             let commit = doc.commit();
             tracing::debug!("Document {} modified, new heads: {:?}", document_id, commit);

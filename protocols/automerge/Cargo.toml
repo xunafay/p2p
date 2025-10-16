@@ -7,4 +7,5 @@ edition = "2024"
 automerge = "0.7.0"
 either = "1.15.0"
 libp2p = { workspace = true }
+quick-protobuf = "0.8.1"
 tracing = "0.1.41"

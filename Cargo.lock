@@ -1822,6 +1822,7 @@ dependencies = [
  "automerge",
  "either",
  "libp2p",
+ "quick-protobuf",
  "tracing",
 ]
 

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package messages;
+
+message DocumentSyncMessage {
+  string id = 1;
+  bytes message = 2;
+}
+
+message DocumentSyncError {
+  string id = 1;
+  SyncErrorReason reason = 2;
+}
+
+message SyncErrorReason {
+  enum Reason {
+    UNKNOWN = 0;
+    INVALID_MESSAGE = 1;
+    DOCUMENT_NOT_FOUND = 2;
+    INTERNAL_ERROR = 3;
+  }
+  Reason reason = 1;
+  string details = 2;
+}
+
+message AvailableDocuments { repeated string ids = 1; }
+message RequestAvailableDocuments {}
+
+message RequestDocument { string id = 1; }
+message Document {
+  string id = 1;
+  optional bytes document = 2;
+}
+
+message Message {
+  oneof msg {
+    DocumentSyncMessage sync_message = 1;
+    DocumentSyncError sync_error = 2;
+    AvailableDocuments available_documents = 3;
+    RequestAvailableDocuments request_available_documents = 4;
+    RequestDocument request_document = 5;
+    Document document = 6;
+  }
+}
